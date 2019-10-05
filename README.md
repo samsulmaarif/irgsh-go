@@ -11,10 +11,10 @@ Patches, suggestions and comments are welcome!
 ## Install
 
 
-You need Docker, Redis and these packages,
+You need these packages,
 
 ```
-gpg pbuilder debootstrap devscripts python-apt reprepro
+docker.io redis gpg pbuilder debootstrap devscripts python-apt reprepro
 ```
 
 Then install IRGSH with this command bellow,
