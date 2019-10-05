@@ -2,6 +2,9 @@ package main
 
 import (
 	"errors"
+	"fmt"
+	"github.com/hpcloud/tail"
+	"log"
 	"os"
 	"os/exec"
 	"strings"
@@ -11,6 +14,7 @@ type IrgshConfig struct {
 	Redis   string        `json:"redis"`
 	Chief   ChiefConfig   `json:"chief"`
 	Builder BuilderConfig `json:"builder"`
+	ISO     ISOConfig     `json:"iso"`
 	Repo    RepoConfig    `json:"repo"`
 	IsTest  bool          `json:"is_test"`
 }
@@ -21,6 +25,11 @@ type ChiefConfig struct {
 }
 
 type BuilderConfig struct {
+	Workdir         string `json:"workdir" validate:"required"`
+	UpstreamDistUrl string `json:"upstream_dist_url" validate:"required"` // http://kartolo.sby.datautama.net.id/debian
+}
+
+type ISOConfig struct {
 	Workdir string `json:"workdir" validate:"required"`
 }
 
@@ -46,10 +55,16 @@ func CmdExec(cmdStr string, cmdDesc string, logPath string) (err error) {
 	}
 
 	if len(logPath) > 0 {
+
+		logPathArr := strings.Split(logPath, "/")
+		logPathArr = logPathArr[:len(logPathArr)-1]
+		logDir := "/" + strings.Join(logPathArr, "/")
+		os.MkdirAll(logDir, os.ModePerm)
 		f, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 		if err != nil {
 			return err
 		}
+		defer f.Close()
 		_, _ = f.WriteString("\n")
 		if len(cmdDesc) > 0 {
 			cmdDescSplitted := strings.Split(cmdDesc, "\n")
@@ -59,10 +74,21 @@ func CmdExec(cmdStr string, cmdDesc string, logPath string) (err error) {
 		}
 		_, _ = f.WriteString("##### RUN " + cmdStr + "\n")
 		f.Close()
-		cmdStr += " | tee -a " + logPath
+		cmdStr += " 2>&1 | tee -a " + logPath
 	}
-
-	cmd := exec.Command("bash", "-c", cmdStr)
+	// `set -o pipefail` will forces to return the original exit code
+	cmd := exec.Command("bash", "-c", "set -o pipefail && "+cmdStr)
 	err = cmd.Run()
+
 	return
+}
+
+func StreamLog(path string) {
+	t, err := tail.TailFile(path, tail.Config{Follow: true})
+	if err != nil {
+		log.Printf("error: %v\n", err)
+	}
+	for line := range t.Lines {
+		fmt.Println(line.Text)
+	}
 }

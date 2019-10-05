@@ -43,12 +43,12 @@ func main() {
 		os.Exit(1)
 	}
 	validate := validator.New()
-	err = validate.Struct(irgshConfig.Builder)
+	err = validate.Struct(irgshConfig.ISO)
 	if err != nil {
 		log.Fatal(err.Error())
 		os.Exit(1)
 	}
-	_ = exec.Command("bash", "-c", "mkdir -p "+irgshConfig.Builder.Workdir)
+	_ = exec.Command("bash", "-c", "mkdir -p "+irgshConfig.ISO.Workdir)
 
 	app = cli.NewApp()
 	app.Name = "irgsh-go"
@@ -59,30 +59,12 @@ func main() {
 
 	app.Commands = []cli.Command{
 		{
-			Name:    "init-builder",
+			Name:    "init",
 			Aliases: []string{"i"},
-			Usage:   "Initialize builder",
+			Usage:   "initialize iso",
 			Action: func(c *cli.Context) error {
-				err := InitBuilder()
-				return err
-			},
-		},
-		{
-			Name:    "init-base",
-			Aliases: []string{"i"},
-			Usage:   "Initialize pbuilder base.tgz. This need to be run under sudo or root",
-			Action: func(c *cli.Context) error {
-				err := InitBase()
-				return err
-			},
-		},
-		{
-			Name:    "update-base",
-			Aliases: []string{"i"},
-			Usage:   "update base.tgz",
-			Action: func(c *cli.Context) error {
-				err := UpdateBase()
-				return err
+				// Do nothing
+				return nil
 			},
 		},
 	}
@@ -102,9 +84,9 @@ func main() {
 			fmt.Println("Could not create server : " + err.Error())
 		}
 
-		server.RegisterTask("build", Build)
+		server.RegisterTask("iso", BuildISO)
 
-		worker := server.NewWorker("builder", 1)
+		worker := server.NewWorker("iso", 2)
 		err = worker.Launch()
 		if err != nil {
 			fmt.Println("Could not launch worker : " + err.Error())
@@ -117,8 +99,13 @@ func main() {
 }
 
 func serve() {
-	fs := http.FileServer(http.Dir(irgshConfig.Builder.Workdir))
+	fs := http.FileServer(http.Dir(irgshConfig.ISO.Workdir))
 	http.Handle("/", fs)
-	log.Println("irgsh-go builder now live on port 8081, serving path : " + irgshConfig.Builder.Workdir)
-	log.Fatal(http.ListenAndServe(":8081", nil))
+	log.Println("irgsh-go iso now live on port 8083, serving path : " + irgshConfig.ISO.Workdir)
+	log.Fatal(http.ListenAndServe(":8083", nil))
+}
+
+func BuildISO(payload string) (next string, err error) {
+  fmt.Println("Done")
+  return
 }
