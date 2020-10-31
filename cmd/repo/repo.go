@@ -3,9 +3,11 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 
+	"github.com/blankon/irgsh-go/pkg/systemutil"
 	"github.com/manifoldco/promptui"
 )
 
@@ -13,7 +15,7 @@ func uploadLog(logPath string, id string) {
 	// Upload the log to chief
 	cmdStr := "curl -v -F 'uploadFile=@" + logPath + "' '" + irgshConfig.Chief.Address + "/api/v1/log-upload?id=" + id + "&type=repo'"
 	fmt.Println(cmdStr)
-	err := CmdExec(
+	_, err := systemutil.CmdExec(
 		cmdStr,
 		"Uploading log file to chief",
 		"",
@@ -37,7 +39,7 @@ func Repo(payload string) (err error) {
 
 	logPath := irgshConfig.Repo.Workdir + "/artifacts/"
 	logPath += raw["taskUUID"].(string) + "/repo.log"
-	go StreamLog(logPath)
+	go systemutil.StreamLog(logPath)
 
 	cmdStr := fmt.Sprintf(`mkdir -p %s/artifacts && \
 	cd %s/artifacts/ && \
@@ -49,7 +51,7 @@ func Repo(payload string) (err error) {
 		raw["taskUUID"].(string),
 		raw["taskUUID"].(string),
 	)
-	err = CmdExec(cmdStr, "Downloading the artifact", logPath)
+	_, err = systemutil.CmdExec(cmdStr, "Downloading the artifact", logPath)
 	if err != nil {
 		fmt.Printf("error: %v\n", err)
 		uploadLog(logPath, raw["taskUUID"].(string))
@@ -67,7 +69,10 @@ func Repo(payload string) (err error) {
 			irgshConfig.Repo.Workdir,
 			raw["taskUUID"],
 		)
-		err = CmdExec(
+		if irgshConfig.IsDev {
+			cmdStr = strings.ReplaceAll(cmdStr, "GNUPGHOME=/var/lib/irgsh/gnupg ", "")
+		}
+		_, err := systemutil.CmdExec(
 			cmdStr,
 			"This is experimental package, remove any existing package.",
 			logPath,
@@ -86,7 +91,10 @@ func Repo(payload string) (err error) {
 		irgshConfig.Repo.Workdir,
 		raw["taskUUID"],
 	)
-	err = CmdExec(
+	if irgshConfig.IsDev {
+		cmdStr = strings.ReplaceAll(cmdStr, "GNUPGHOME=/var/lib/irgsh/gnupg ", "")
+	}
+	_, err = systemutil.CmdExec(
 		cmdStr,
 		"Injecting the deb files from artifact to the repository",
 		logPath,
@@ -116,14 +124,22 @@ func InitRepo() (err error) {
 	}
 
 	// TODO ask for matched distribution name as this command is super dangerous
+	// Prepare workdir
+	err = os.MkdirAll(irgshConfig.Repo.Workdir, 0755)
+	if err != nil {
+		log.Fatalln(err)
+	}
 
 	fmt.Println("##### Initializing new repository for " + irgshConfig.Repo.DistCodename)
 
 	logPath := irgshConfig.Repo.Workdir + "/init.log"
-	go StreamLog(logPath)
+	go systemutil.StreamLog(logPath)
 
 	repoTemplatePath := "/usr/share/irgsh/reprepro-template"
-	if irgshConfig.IsTest {
+	if irgshConfig.IsDev {
+		cwd, _ := os.Getwd()
+		repoTemplatePath = cwd + "/utils/reprepro-template"
+	} else if irgshConfig.IsTest {
 		dir, _ := os.Getwd()
 		repoTemplatePath = dir + "/../utils/reprepro-template"
 	}
@@ -135,7 +151,7 @@ func InitRepo() (err error) {
 		irgshConfig.Repo.Workdir,
 		irgshConfig.Repo.DistCodename,
 	)
-	err = CmdExec(cmdStr, "Preparing reprepro template", logPath)
+	_, err = systemutil.CmdExec(cmdStr, "Preparing reprepro template", logPath)
 	if err != nil {
 		fmt.Printf("error: %v\n", err)
 		return
@@ -155,7 +171,7 @@ func InitRepo() (err error) {
 		irgshConfig.Repo.DistSupportedArchitectures,
 		irgshConfig.Repo.UpstreamDistComponents,
 	)
-	err = CmdExec(
+	_, err = systemutil.CmdExec(
 		cmdStr,
 		"Populate the reprepro's updates config file with values from irgsh's config.yml",
 		logPath,
@@ -187,7 +203,7 @@ func InitRepo() (err error) {
 		irgshConfig.Repo.DistSigningKey,
 		irgshConfig.Repo.UpstreamName,
 	)
-	err = CmdExec(
+	_, err = systemutil.CmdExec(
 		cmdStr,
 		"Populate the reprepro's distributions config file with values from irgsh's config.yml",
 		logPath,
@@ -210,7 +226,7 @@ func InitRepo() (err error) {
 		irgshConfig.Repo.DistCodename,
 		repositoryPath,
 	)
-	err = CmdExec(
+	_, err = systemutil.CmdExec(
 		cmdStr,
 		"Populate the reprepro's options config file with values from irgsh's config.yml",
 		logPath,
@@ -224,7 +240,7 @@ func InitRepo() (err error) {
 		irgshConfig.Repo.Workdir,
 		irgshConfig.Repo.DistCodename,
 	)
-	err = CmdExec(
+	_, err = systemutil.CmdExec(
 		cmdStr,
 		"Initialize the reprepro repository for the first time",
 		logPath,
@@ -245,7 +261,7 @@ func InitRepo() (err error) {
 		irgshConfig.Repo.Workdir,
 		irgshConfig.Repo.DistCodename+"-experimental",
 	)
-	err = CmdExec(cmdStr, "Preparing reprepro template", logPath)
+	_, err = systemutil.CmdExec(cmdStr, "Preparing reprepro template", logPath)
 	if err != nil {
 		fmt.Printf("error: %v\n", err)
 		return
@@ -265,7 +281,7 @@ func InitRepo() (err error) {
 		irgshConfig.Repo.DistSupportedArchitectures,
 		irgshConfig.Repo.UpstreamDistComponents,
 	)
-	err = CmdExec(
+	_, err = systemutil.CmdExec(
 		cmdStr,
 		"Populate the reprepro's updates config file with values from irgsh's config.yml",
 		logPath,
@@ -297,7 +313,7 @@ func InitRepo() (err error) {
 		irgshConfig.Repo.DistSigningKey,
 		irgshConfig.Repo.UpstreamName,
 	)
-	err = CmdExec(
+	_, err = systemutil.CmdExec(
 		cmdStr,
 		"Populate the reprepro's distributions config file with values from irgsh's config.yml",
 		logPath,
@@ -320,7 +336,7 @@ func InitRepo() (err error) {
 		irgshConfig.Repo.DistCodename+"-experimental",
 		repositoryPath,
 	)
-	err = CmdExec(
+	_, err = systemutil.CmdExec(
 		cmdStr,
 		"Populate the reprepro's options config file with values from irgsh's config.yml",
 		logPath,
@@ -334,7 +350,7 @@ func InitRepo() (err error) {
 		irgshConfig.Repo.Workdir,
 		irgshConfig.Repo.DistCodename+"-experimental",
 	)
-	err = CmdExec(
+	_, err = systemutil.CmdExec(
 		cmdStr,
 		"Initialize the reprepro repository for the first time",
 		logPath,
@@ -354,14 +370,14 @@ func UpdateRepo() (err error) {
 	)
 
 	logPath := irgshConfig.Repo.Workdir + "/update.log"
-	go StreamLog(logPath)
+	go systemutil.StreamLog(logPath)
 
 	cmdStr := fmt.Sprintf("cd %s/%s/ && reprepro -v -v -v update > %s",
 		irgshConfig.Repo.Workdir,
 		irgshConfig.Repo.DistCodename,
 		logPath,
 	)
-	err = CmdExec(cmdStr, "Sync the repository against upstream repository", logPath)
+	_, err = systemutil.CmdExec(cmdStr, "Sync the repository against upstream repository", logPath)
 	if err != nil {
 		fmt.Printf("error: %v\n", err)
 		return

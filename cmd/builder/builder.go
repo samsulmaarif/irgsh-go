@@ -9,6 +9,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/blankon/irgsh-go/pkg/systemutil"
 	"gopkg.in/src-d/go-git.v4"
 )
 
@@ -16,7 +17,7 @@ func uploadLog(logPath string, id string) {
 	// Upload the log to chief
 	cmdStr := "curl -v -F 'uploadFile=@" + logPath + "' '"
 	cmdStr += irgshConfig.Chief.Address + "/api/v1/log-upload?id=" + id + "&type=build'"
-	err := CmdExec(
+	_, err := systemutil.CmdExec(
 		cmdStr,
 		"Uploading log file to chief",
 		"",
@@ -35,7 +36,7 @@ func Build(payload string) (next string, err error) {
 	fmt.Println("Processing pipeline :" + raw["taskUUID"].(string))
 
 	logPath := irgshConfig.Builder.Workdir + "/" + raw["taskUUID"].(string) + "/build.log"
-	go StreamLog(logPath)
+	go systemutil.StreamLog(logPath)
 
 	next, err = Clone(payload)
 	if err != nil {
@@ -136,7 +137,7 @@ func BuildPreparation(payload string) (next string, err error) {
 	// Extract signed DSC
 	cmdStr := "cd " + irgshConfig.Builder.Workdir + "/" + raw["taskUUID"].(string)
 	cmdStr += " && tar -xvf debuild.tar.gz && rm -f debuild.tar.gz"
-	err = CmdExec(
+	_, err = systemutil.CmdExec(
 		cmdStr,
 		"",
 		"",
@@ -155,13 +156,20 @@ func BuildPackage(payload string) (next string, err error) {
 	var raw map[string]interface{}
 	json.Unmarshal(in, &raw)
 
-	logPath := irgshConfig.Builder.Workdir + "/" + raw["taskUUID"].(string) + "/build.log"
+	buildPath := irgshConfig.Builder.Workdir + "/" + raw["taskUUID"].(string)
+	err = os.MkdirAll(buildPath, 0755)
+	if err != nil {
+		log.Printf("error: %v\n", err)
+		return
+	}
+
+	logPath := buildPath + "/build.log"
 
 	// Copy the source files
-	cmdStr := "cp -vR " + irgshConfig.Builder.Workdir + "/" + raw["taskUUID"].(string)
+	cmdStr := "cp -vR " + buildPath
 	cmdStr += "/source/* " + irgshConfig.Builder.Workdir + "/" + raw["taskUUID"].(string)
 	cmdStr += "/package/"
-	err = CmdExec(
+	_, err = systemutil.CmdExec(
 		cmdStr,
 		"",
 		logPath,
@@ -172,7 +180,7 @@ func BuildPackage(payload string) (next string, err error) {
 	}
 
 	// Cleanup pbuilder cache result
-	_ = CmdExec(
+	_, _ = systemutil.CmdExec(
 		"rm -rf /var/cache/pbuilder/result/*",
 		"",
 		"",
@@ -182,7 +190,7 @@ func BuildPackage(payload string) (next string, err error) {
 	cmdStr = "docker run -v " + irgshConfig.Builder.Workdir + "/" + raw["taskUUID"].(string)
 	cmdStr += ":/tmp/build --privileged=true -i pbocker bash -c /build.sh"
 	fmt.Println(cmdStr)
-	err = CmdExec(
+	_, err = systemutil.CmdExec(
 		cmdStr,
 		"Building the package",
 		logPath,
@@ -209,7 +217,7 @@ func StorePackage(payload string) (next string, err error) {
 	cmdStr += "/" + raw["taskUUID"].(string) + ".tar.gz' "
 	cmdStr += irgshConfig.Chief.Address + "/api/v1/artifact-upload?id="
 	cmdStr += raw["taskUUID"].(string)
-	err = CmdExec(
+	_, err = systemutil.CmdExec(
 		cmdStr,
 		"",
 		logPath,

@@ -14,10 +14,10 @@ Patches, suggestions and comments are welcome!
 You need Docker, Redis and these packages,
 
 ```
-gpg pbuilder debootstrap devscripts python-apt reprepro
+gpg pbuilder debootstrap devscripts curl reprepro
 ```
 
-Then install IRGSH with this command bellow,
+Install all deps + released IRGSH with this command bellow,
 
 ```
 curl -L -o- https://raw.githubusercontent.com/BlankOn/irgsh-go/master/install.sh | bash

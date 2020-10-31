@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -10,44 +9,27 @@ import (
 
 	machinery "github.com/RichardKnop/machinery/v1"
 	machineryConfig "github.com/RichardKnop/machinery/v1/config"
-	"github.com/ghodss/yaml"
+	"github.com/blankon/irgsh-go/internal/config"
 	"github.com/urfave/cli"
-	validator "gopkg.in/go-playground/validator.v9"
 )
 
 var (
 	app        *cli.App
 	configPath string
 	server     *machinery.Server
+	version    string
 
-	irgshConfig IrgshConfig
+	irgshConfig = config.IrgshConfig{}
 )
 
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
-	// Load config
-	configPath = os.Getenv("IRGSH_CONFIG_PATH")
-	if len(configPath) == 0 {
-		configPath = "/etc/irgsh/config.yml"
-	}
-	irgshConfig = IrgshConfig{}
-	yamlFile, err := ioutil.ReadFile(configPath)
+	irgshConfig, err := config.LoadConfig()
 	if err != nil {
-		fmt.Println(err.Error())
-		os.Exit(1)
+		log.Fatalln("couldn't load config : ", err)
 	}
-	err = yaml.Unmarshal(yamlFile, &irgshConfig)
-	if err != nil {
-		fmt.Println(err.Error())
-		os.Exit(1)
-	}
-	validate := validator.New()
-	err = validate.Struct(irgshConfig.ISO)
-	if err != nil {
-		log.Fatal(err.Error())
-		os.Exit(1)
-	}
+
 	_ = exec.Command("bash", "-c", "mkdir -p "+irgshConfig.ISO.Workdir)
 
 	app = cli.NewApp()
@@ -55,7 +37,7 @@ func main() {
 	app.Usage = "irgsh-go distributed packager"
 	app.Author = "BlankOn Developer"
 	app.Email = "blankon-dev@googlegroups.com"
-	app.Version = "IRGSH_GO_VERSION"
+	app.Version = version
 
 	app.Commands = []cli.Command{
 		{
@@ -106,6 +88,6 @@ func serve() {
 }
 
 func BuildISO(payload string) (next string, err error) {
-  fmt.Println("Done")
-  return
+	fmt.Println("Done")
+	return
 }

@@ -13,135 +13,10 @@ import (
 	"strings"
 	"time"
 
-	machinery "github.com/RichardKnop/machinery/v1"
 	"github.com/RichardKnop/machinery/v1/backends/result"
-	machineryConfig "github.com/RichardKnop/machinery/v1/config"
 	"github.com/RichardKnop/machinery/v1/tasks"
-	"github.com/ghodss/yaml"
 	"github.com/google/uuid"
-	"github.com/urfave/cli"
-	validator "gopkg.in/go-playground/validator.v9"
 )
-
-var (
-	app        *cli.App
-	configPath string
-	server     *machinery.Server
-
-	irgshConfig IrgshConfig
-)
-
-type Submission struct {
-	TaskUUID       string    `json:"taskUUID"`
-	Timestamp      time.Time `json:"timestamp"`
-	SourceURL      string    `json:"sourceUrl"`
-	PackageURL     string    `json:"packageUrl"`
-	Tarball        string    `json:"tarball"`
-	IsExperimental bool      `json:"isExperimental"`
-}
-
-type ArtifactsPayloadResponse struct {
-	Data []string `json:"data"`
-}
-
-type SubmitPayloadResponse struct {
-	PipelineId string   `json:"pipelineId"`
-	Jobs       []string `json:"jobs,omitempty"`
-}
-
-func main() {
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
-
-	// Load config
-	configPath = os.Getenv("IRGSH_CONFIG_PATH")
-	if len(configPath) == 0 {
-		configPath = "/etc/irgsh/config.yml"
-	}
-	irgshConfig = IrgshConfig{}
-	yamlFile, err := ioutil.ReadFile(configPath)
-	if err != nil {
-		fmt.Println(err.Error())
-		os.Exit(1)
-	}
-	err = yaml.Unmarshal(yamlFile, &irgshConfig)
-	if err != nil {
-		fmt.Println(err.Error())
-		os.Exit(1)
-	}
-	validate := validator.New()
-	err = validate.Struct(irgshConfig.Chief)
-	if err != nil {
-		log.Fatal(err.Error())
-		os.Exit(1)
-	}
-	app = cli.NewApp()
-	app.Name = "irgsh-go"
-	app.Usage = "irgsh-go distributed packager"
-	app.Author = "BlankOn Developer"
-	app.Email = "blankon-dev@googlegroups.com"
-	app.Version = "IRGSH_GO_VERSION"
-
-	app.Action = func(c *cli.Context) error {
-
-		server, err = machinery.NewServer(
-			&machineryConfig.Config{
-				Broker:        irgshConfig.Redis,
-				ResultBackend: irgshConfig.Redis,
-				DefaultQueue:  "irgsh",
-			},
-		)
-		if err != nil {
-			fmt.Println("Could not create server : " + err.Error())
-		}
-
-		serve()
-
-		return nil
-
-	}
-	app.Run(os.Args)
-
-}
-
-func serve() {
-	http.HandleFunc("/", IndexHandler)
-	http.HandleFunc("/api/v1/artifacts", ArtifactsHandler)
-	http.HandleFunc("/api/v1/submit", PackageSubmitHandler)
-	http.HandleFunc("/api/v1/status", BuildStatusHandler)
-	http.HandleFunc("/api/v1/artifact-upload", artifactUploadHandler())
-	http.HandleFunc("/api/v1/log-upload", logUploadHandler())
-	http.HandleFunc("/api/v1/build-iso", BuildISOHandler)
-
-	artifactFs := http.FileServer(http.Dir(irgshConfig.Chief.Workdir + "/artifacts"))
-	http.Handle("/artifacts/", http.StripPrefix("/artifacts/", artifactFs))
-
-	logFs := http.FileServer(http.Dir(irgshConfig.Chief.Workdir + "/logs"))
-	http.Handle("/logs/", http.StripPrefix("/logs/", logFs))
-
-	log.Println("irgsh-go chief now live on port 8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
-}
-
-func IndexHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintf(w, "irgsh-chief "+app.Version)
-}
-
-func ArtifactsHandler(w http.ResponseWriter, r *http.Request) {
-	files, err := filepath.Glob(irgshConfig.Chief.Workdir + "/artifacts/*")
-	if err != nil {
-		fmt.Println(err.Error())
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "500")
-	}
-	artifacts := []string{}
-	for _, a := range files {
-		artifacts = append(artifacts, strings.Split(a, "artifacts/")[1])
-	}
-	// TODO pagination
-	payload := ArtifactsPayloadResponse{Data: artifacts}
-	jsonStr, _ := json.Marshal(payload)
-	fmt.Fprintf(w, string(jsonStr))
-}
 
 func PackageSubmitHandler(w http.ResponseWriter, r *http.Request) {
 	submission := Submission{}
@@ -162,6 +37,7 @@ func PackageSubmitHandler(w http.ResponseWriter, r *http.Request) {
 
 	buff, err := base64.StdEncoding.DecodeString(tarballB64)
 	if err != nil {
+		log.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "500")
 		return
@@ -172,6 +48,7 @@ func PackageSubmitHandler(w http.ResponseWriter, r *http.Request) {
 	cmd := exec.Command("bash", "-c", cmdStr)
 	err = cmd.Run()
 	if err != nil {
+		log.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "500")
 		return
@@ -181,7 +58,7 @@ func PackageSubmitHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println(path)
 	err = ioutil.WriteFile(path, buff, 07440)
 	if err != nil {
-		fmt.Println(err.Error())
+		log.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "500")
 		return
@@ -192,7 +69,7 @@ func PackageSubmitHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println(cmdStr)
 	err = exec.Command("bash", "-c", cmdStr).Run()
 	if err != nil {
-		fmt.Println(err.Error())
+		log.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "500")
 		return
@@ -201,10 +78,13 @@ func PackageSubmitHandler(w http.ResponseWriter, r *http.Request) {
 	cmdStr = "cd " + irgshConfig.Chief.Workdir + "/submissions/" + submission.TaskUUID + " && "
 	// TODO This gnupg path should be configurable with config.yml
 	cmdStr += "GNUPGHOME=/var/lib/irgsh/gnupg gpg --verify *.dsc"
+	if irgshConfig.IsDev {
+		cmdStr = strings.ReplaceAll(cmdStr, "GNUPGHOME=/var/lib/irgsh/gnupg ", "")
+	}
 	fmt.Println(cmdStr)
 	err = exec.Command("bash", "-c", cmdStr).Run()
 	if err != nil {
-		fmt.Println(err.Error())
+		log.Println(err)
 		w.WriteHeader(http.StatusUnauthorized)
 		fmt.Fprintf(w, "401 Unauthorized")
 		return
@@ -276,6 +156,7 @@ func BuildStatusHandler(w http.ResponseWriter, r *http.Request) {
 
 func artifactUploadHandler() http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var err error
 
 		keys, ok := r.URL.Query()["id"]
 
@@ -288,6 +169,12 @@ func artifactUploadHandler() http.HandlerFunc {
 		id := keys[0]
 
 		targetPath := irgshConfig.Chief.Workdir + "/artifacts"
+		err = os.MkdirAll(targetPath, 0755)
+		if err != nil {
+			log.Println(err.Error())
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
 
 		// parse and validate file and post parameters
 		file, _, err := r.FormFile("uploadFile")
@@ -338,6 +225,7 @@ func artifactUploadHandler() http.HandlerFunc {
 
 func logUploadHandler() http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var err error
 
 		keys, ok := r.URL.Query()["id"]
 
@@ -360,6 +248,12 @@ func logUploadHandler() http.HandlerFunc {
 		logType := keys[0]
 
 		targetPath := irgshConfig.Chief.Workdir + "/logs"
+		err = os.MkdirAll(targetPath, 0755)
+		if err != nil {
+			log.Println(err.Error())
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
 
 		// parse and validate file and post parameters
 		file, _, err := r.FormFile("uploadFile")

@@ -1,41 +1,24 @@
 package main
 
 import (
-	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
 	"strconv"
 	"testing"
 
-	"github.com/ghodss/yaml"
+	"github.com/blankon/irgsh-go/internal/config"
 	"github.com/stretchr/testify/assert"
-	validator "gopkg.in/go-playground/validator.v9"
 )
 
-func TestRepoPreparation(t *testing.T) {
+func TestMain(m *testing.M) {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
-	configPath = "../utils/config.yml"
-	irgshConfig = IrgshConfig{}
-	yamlFile, err := ioutil.ReadFile(configPath)
-	if err != nil {
-		log.Println(err.Error())
-		assert.Equal(t, true, false, "Should not reach here")
-	}
-	err = yaml.Unmarshal(yamlFile, &irgshConfig)
-	if err != nil {
-		log.Println(err.Error())
-		assert.Equal(t, true, false, "Should not reach here")
-	}
-	validate := validator.New()
-	err = validate.Struct(irgshConfig.Repo)
-	if err != nil {
-		log.Println(err.Error())
-		assert.Equal(t, true, false, "Should not reach here")
-	}
+
+	irgshConfig, _ = config.LoadConfig()
 	dir, _ := os.Getwd()
-	irgshConfig.Repo.Workdir = dir + "/../tmp"
-	irgshConfig.IsTest = true
+	irgshConfig.Builder.Workdir = dir + "/../tmp"
+
+	m.Run()
 }
 
 func TestBaseInitRepo(t *testing.T) {

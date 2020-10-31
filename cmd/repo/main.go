@@ -2,60 +2,51 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 
 	machinery "github.com/RichardKnop/machinery/v1"
 	machineryConfig "github.com/RichardKnop/machinery/v1/config"
-	"github.com/ghodss/yaml"
 	"github.com/urfave/cli"
-	validator "gopkg.in/go-playground/validator.v9"
+
+	"github.com/blankon/irgsh-go/internal/config"
 )
 
 var (
 	app        *cli.App
 	configPath string
 	server     *machinery.Server
+	version    string
 
-	irgshConfig IrgshConfig
+	irgshConfig = config.IrgshConfig{}
 )
 
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
-	// Load config
-	configPath = os.Getenv("IRGSH_CONFIG_PATH")
-	if len(configPath) == 0 {
-		configPath = "/etc/irgsh/config.yml"
-	}
-	irgshConfig = IrgshConfig{}
-	yamlFile, err := ioutil.ReadFile(configPath)
+	var err error
+	irgshConfig, err = config.LoadConfig()
 	if err != nil {
-		fmt.Println(err.Error())
-		os.Exit(1)
+		log.Fatalln("couldn't load config : ", err)
 	}
-	err = yaml.Unmarshal(yamlFile, &irgshConfig)
+	// Prepare workdir
+	err = os.MkdirAll(irgshConfig.Repo.Workdir, 0755)
 	if err != nil {
-		fmt.Println(err.Error())
-		os.Exit(1)
+		log.Fatalln(err)
 	}
-	validate := validator.New()
-	err = validate.Struct(irgshConfig.Repo)
+
+	err = os.MkdirAll(irgshConfig.Repo.Workdir, 0755)
 	if err != nil {
-		log.Fatal(err.Error())
-		os.Exit(1)
+		log.Fatalln(err)
 	}
-	_ = exec.Command("bash", "-c", "mkdir -p "+irgshConfig.Repo.Workdir)
 
 	app = cli.NewApp()
 	app.Name = "irgsh-go"
 	app.Usage = "irgsh-go distributed packager"
 	app.Author = "BlankOn Developer"
 	app.Email = "blankon-dev@googlegroups.com"
-	app.Version = "IRGSH_GO_VERSION"
+	app.Version = version
 
 	app.Commands = []cli.Command{
 		{
@@ -126,6 +117,10 @@ func serve() {
 			),
 		),
 	)
-	log.Println("irgsh-go repo is now live on port 8082")
-	log.Fatal(http.ListenAndServe(":8082", nil))
+	port := os.Getenv("PORT")
+	if len(port) < 1 {
+		port = "8082"
+	}
+	log.Println("irgsh-go repo is now live on port " + port)
+	log.Fatal(http.ListenAndServe(":"+port, nil))
 }

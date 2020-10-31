@@ -1,13 +1,13 @@
-package main
+package config
 
 import (
-	"errors"
-	"fmt"
-	"github.com/hpcloud/tail"
+	"io/ioutil"
 	"log"
 	"os"
-	"os/exec"
 	"strings"
+
+	"github.com/ghodss/yaml"
+	validator "gopkg.in/go-playground/validator.v9"
 )
 
 type IrgshConfig struct {
@@ -17,6 +17,7 @@ type IrgshConfig struct {
 	ISO     ISOConfig     `json:"iso"`
 	Repo    RepoConfig    `json:"repo"`
 	IsTest  bool          `json:"is_test"`
+	IsDev   bool          `json:"is_dev"`
 }
 
 type ChiefConfig struct {
@@ -49,46 +50,55 @@ type RepoConfig struct {
 	UpstreamDistComponents     string `json:"upstream_dist_components" validate:"required"`     // main non-free>restricted contrib>extras
 }
 
-func CmdExec(cmdStr string, cmdDesc string, logPath string) (err error) {
-	if len(cmdStr) == 0 {
-		return errors.New("No command string provided.")
+// LoadConfig load irgsh config from file
+func LoadConfig() (config IrgshConfig, err error) {
+	configPaths := []string{
+		"/etc/irgsh/config.yml",
+		"../../utils/config.yml",
+		"./utils/config.yml",
 	}
-
-	if len(logPath) > 0 {
-
-		logPathArr := strings.Split(logPath, "/")
-		logPathArr = logPathArr[:len(logPathArr)-1]
-		logDir := "/" + strings.Join(logPathArr, "/")
-		os.MkdirAll(logDir, os.ModePerm)
-		f, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
-		if err != nil {
-			return err
-		}
-		defer f.Close()
-		_, _ = f.WriteString("\n")
-		if len(cmdDesc) > 0 {
-			cmdDescSplitted := strings.Split(cmdDesc, "\n")
-			for _, desc := range cmdDescSplitted {
-				_, _ = f.WriteString("##### " + desc + "\n")
+	configPath := os.Getenv("IRGSH_CONFIG_PATH")
+	isDev := os.Getenv("DEV") == "1"
+	yamlFile, err := ioutil.ReadFile(configPath)
+	if err != nil {
+		// load from predefined configPaths when no IRGSH_CONFIG_PATH set
+		for _, config := range configPaths {
+			yamlFile, err = ioutil.ReadFile(config)
+			if err == nil {
+				log.Println("load config from : ", config)
+				break
 			}
 		}
-		_, _ = f.WriteString("##### RUN " + cmdStr + "\n")
-		f.Close()
-		cmdStr += " 2>&1 | tee -a " + logPath
+		if err != nil {
+			return
+		}
 	}
-	// `set -o pipefail` will forces to return the original exit code
-	cmd := exec.Command("bash", "-c", "set -o pipefail && "+cmdStr)
-	err = cmd.Run()
+	if isDev {
+		yamlFile, err = ioutil.ReadFile("./utils/config.yml")
+		if err != nil {
+			return
+		}
+	}
+
+	err = yaml.Unmarshal(yamlFile, &config)
+	if err != nil {
+		return
+	}
+
+	if isDev {
+		// Since it's in dev env, let's move some path to ./tmp
+		cwd, _ := os.Getwd()
+		tmpDir := cwd + "/tmp/"
+		if _, err := os.Stat(tmpDir); os.IsNotExist(err) {
+			os.Mkdir(tmpDir, 0755)
+		}
+		config.Chief.Workdir = strings.ReplaceAll(config.Chief.Workdir, "/var/lib/", tmpDir)
+		config.Builder.Workdir = strings.ReplaceAll(config.Builder.Workdir, "/var/lib/", tmpDir)
+		config.Repo.Workdir = strings.ReplaceAll(config.Repo.Workdir, "/var/lib/", tmpDir)
+	}
+	config.IsDev = isDev
+	validate := validator.New()
+	err = validate.Struct(config)
 
 	return
-}
-
-func StreamLog(path string) {
-	t, err := tail.TailFile(path, tail.Config{Follow: true})
-	if err != nil {
-		log.Printf("error: %v\n", err)
-	}
-	for line := range t.Lines {
-		fmt.Println(line.Text)
-	}
 }

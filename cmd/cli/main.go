@@ -27,9 +27,9 @@ var (
 	maintainerSigningKey string
 	sourceUrl            string
 	packageUrl           string
+	version              string
 	isExperimental       bool
 	pipelineId           string
-	irgshConfig          IrgshConfig
 )
 
 func checkForInitValues() (err error) {
@@ -60,7 +60,7 @@ func main() {
 	app.Usage = "irgsh-go distributed packager"
 	app.Author = "BlankOn Developer"
 	app.Email = "blankon-dev@googlegroups.com"
-	app.Version = "IRGSH_GO_VERSION"
+	app.Version = version
 
 	app.Commands = []cli.Command{
 
