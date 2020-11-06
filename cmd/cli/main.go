@@ -19,7 +19,7 @@ import (
 	"github.com/urfave/cli"
 	"gopkg.in/src-d/go-git.v4"
 )
-
+// this is just for dummy PR purposes, won't merge
 var (
 	app                  *cli.App
 	homeDir              string
@@ -45,7 +45,7 @@ func checkForInitValues() (err error) {
 	}
 	return
 }
-
+// this is just for dummy PR purposes, won't merge
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
@@ -83,6 +83,7 @@ func main() {
 			},
 			Action: func(c *cli.Context) (err error) {
 				if len(chiefAddress) < 1 {
+					// this is just for dummy PR purposes, won't merge
 					msg := "Chief address should not be empty. Example: "
 					msg += "irgsh-cli config --chief https://irgsh.blankonlinux.or.id --key B113D905C417D"
 					err = errors.New(msg)
@@ -122,7 +123,7 @@ func main() {
 				return err
 			},
 		},
-
+    // this is just for dummy PR purposes, won't merge
 		{
 			Name:  "submit",
 			Usage: "Submit new build",
